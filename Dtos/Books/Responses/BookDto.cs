@@ -1,4 +1,4 @@
-namespace Library.API.Dtos
+namespace Library.API.Dtos.Books.Responses
 {
     public class BookDto
     {

@@ -1,6 +1,13 @@
 using AutoMapper;
-using Library.API.Dtos;
 using Library.API.Entities;
+using Library.API.Dtos.Authors.Requests;
+using Library.API.Dtos.Authors.Responses;
+using Library.API.Dtos.Books.Requests;
+using Library.API.Dtos.Books.Responses;
+using Library.API.Dtos.Categories.Requests;
+using Library.API.Dtos.Categories.Responses;
+using Library.API.Dtos.BorrowRecords.Requests;
+using Library.API.Dtos.BorrowRecords.Responses;
 
 namespace Library.API.Helpers
 {

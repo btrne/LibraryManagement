@@ -2,8 +2,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Library.API.Data;
 using Library.API.Entities;
-using Library.API.Dtos;
 using AutoMapper;
+using Library.API.Dtos.Books.Requests;
+using Library.API.Dtos.Books.Responses;
 
 namespace Library.API.Controllers
 {
