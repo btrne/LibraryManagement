@@ -22,9 +22,17 @@ namespace Library.API.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<CategoryDto>>> GetCategories()
+        public async Task<ActionResult<IEnumerable<CategoryDto>>> GetCategories([FromQuery] CategorySearchDto searchDto)
         {
-            var categories = await _context.Categories.ToListAsync();
+            var query = _context.Categories.AsQueryable();
+
+            // Nếu người dùng có nhập từ khóa, tiến hành lọc theo tên Thể loại
+            if (!string.IsNullOrWhiteSpace(searchDto.Keyword))
+            {
+                query = query.Where(c => c.Name.Contains(searchDto.Keyword));
+            }
+
+            var categories = await query.ToListAsync();
             return Ok(_mapper.Map<IEnumerable<CategoryDto>>(categories));
         }
 

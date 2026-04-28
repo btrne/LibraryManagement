@@ -22,9 +22,18 @@ namespace Library.API.Controllers
         }
         // 1. GET: api/authors
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<AuthorDto>>> GetAuthors()
+        public async Task<ActionResult<IEnumerable<AuthorDto>>> GetAuthors([FromQuery] AuthorSearchDto searchDto)
         {
-            var authors = await _context.Authors.ToListAsync();
+            // AsQueryable() giúp chúng ta "lắp ráp" câu query trước khi thực sự chạy xuống Database
+            var query = _context.Authors.AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(searchDto.Keyword))
+            {
+                // LIKE '%keyword%' trong SQL
+                query = query.Where(a => a.Name.Contains(searchDto.Keyword));
+            }
+
+            var authors = await query.ToListAsync(); // Chạy câu SQL xuống DB
             return Ok(_mapper.Map<IEnumerable<AuthorDto>>(authors));
         }
         // 2. GET: api/authors/5

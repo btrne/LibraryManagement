@@ -25,18 +25,38 @@ namespace Library.API.Controllers
             _mapper = mapper;
         }
 
-        // 1. GET: Lấy tất cả phiếu mượn (kèm chi tiết từng sách)
+        // 1. GET: Lấy tất cả phiếu mượn (Có hỗ trợ lọc)
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<BorrowRecordDto>>> GetBorrowRecords()
+        public async Task<ActionResult<IEnumerable<BorrowRecordDto>>> GetBorrowRecords([FromQuery] BorrowRecordSearchDto searchDto)
         {
-            var records = await _context.BorrowRecords
-                .Include(br => br.BorrowDetails) // Lấy danh sách chi tiết
-                    .ThenInclude(d => d.Book)    // Lấy thông tin sách bên trong chi tiết
-                .ToListAsync();
+            var query = _context.BorrowRecords
+                .Include(br => br.BorrowDetails) 
+                    .ThenInclude(d => d.Book)    
+                .AsQueryable();
 
+            // Lọc theo số điện thoại (Tuyệt vời để tra cứu lịch sử 1 người)
+            if (!string.IsNullOrWhiteSpace(searchDto.PhoneNumber))
+                query = query.Where(br => br.PhoneNumber.Contains(searchDto.PhoneNumber));
+
+            // Lọc theo tên người mượn
+            if (!string.IsNullOrWhiteSpace(searchDto.BorrowerName))
+                query = query.Where(br => br.BorrowerName.Contains(searchDto.BorrowerName));
+
+            // Chỉ lấy các phiếu mượn "Đang hoạt động" (Còn ít nhất 1 cuốn sách chưa trả)
+            if (searchDto.IsActive.HasValue && searchDto.IsActive.Value)
+                query = query.Where(br => br.BorrowDetails.Any(d => d.ReturnDate == null));
+
+            // Chỉ lấy các phiếu "Quá hạn" (Phục vụ cho chức năng gọi điện đòi sách)
+            if (searchDto.IsOverdue.HasValue && searchDto.IsOverdue.Value)
+            {
+                query = query.Where(br => 
+                    br.DueDate < DateTime.Today && 
+                    br.BorrowDetails.Any(d => d.ReturnDate == null));
+            }
+
+            var records = await query.OrderByDescending(r => r.BorrowDate).ToListAsync();
             return Ok(_mapper.Map<IEnumerable<BorrowRecordDto>>(records));
         }
-
         // 2. POST: Tạo phiếu mượn mới
         [HttpPost]
         public async Task<IActionResult> BorrowBooks([FromBody] BorrowRecordCreateDto createDto)

@@ -23,16 +23,28 @@ namespace Library.API.Controllers
 
         // 1. GET: api/books
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<BookDto>>> GetBooks()
+        public async Task<ActionResult<IEnumerable<BookDto>>> GetBooks([FromQuery] BookSearchDto searchDto)
         {
-            var books = await _context.Books
+            var query = _context.Books
                 .Include(b => b.Author)
                 .Include(b => b.Category)
-                .ToListAsync();
-            
+                .AsQueryable();
+
+            // 1. Lọc theo từ khóa (Tên sách)
+            if (!string.IsNullOrWhiteSpace(searchDto.Keyword))
+                query = query.Where(b => b.Title.Contains(searchDto.Keyword));
+
+            // 2. Lọc theo Tác giả
+            if (searchDto.AuthorId.HasValue)
+                query = query.Where(b => b.AuthorId == searchDto.AuthorId.Value);
+
+            // 3. Lọc theo Thể loại
+            if (searchDto.CategoryId.HasValue)
+                query = query.Where(b => b.CategoryId == searchDto.CategoryId.Value);
+
+            var books = await query.ToListAsync();
             return Ok(_mapper.Map<IEnumerable<BookDto>>(books));
         }
-
         // 2. GET: api/books/5
         [HttpGet("{id}")]
         public async Task<ActionResult<BookDto>> GetBook(int id)
