@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Library.API.Entities
 {
@@ -14,11 +15,15 @@ namespace Library.API.Entities
         [MaxLength(100)]
         public string BorrowerName { get; set; } = string.Empty;
 
+        [Required]
+        [MaxLength(15)]
+        public string PhoneNumber { get; set; } = string.Empty;
+
         public DateTime BorrowDate { get; set; } = DateTime.Now;
 
-        public DateTime? ReturnDate { get; set; } // Nullable nếu chưa trả sách
+        public DateTime DueDate { get; set; } 
 
         // Navigation Property
-        public Book Book { get; set; } = null!;
+        public ICollection<BorrowDetail> BorrowDetails { get; set; } = new List<BorrowDetail>();
     }
 }

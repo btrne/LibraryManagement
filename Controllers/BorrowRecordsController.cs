@@ -14,6 +14,10 @@ namespace Library.API.Controllers
     {
         private readonly LibraryDbContext _context;
         private readonly IMapper _mapper;
+        
+        private const int MaxBooks = 5;
+        private const int BorrowDays = 30;
+        private const decimal FinePerDay = 5000;
 
         public BorrowRecordsController(LibraryDbContext context, IMapper mapper)
         {
@@ -21,70 +25,197 @@ namespace Library.API.Controllers
             _mapper = mapper;
         }
 
-        // 1. GET: Lấy danh sách phiếu mượn
+        // 1. GET: Lấy tất cả phiếu mượn (kèm chi tiết từng sách)
         [HttpGet]
         public async Task<ActionResult<IEnumerable<BorrowRecordDto>>> GetBorrowRecords()
         {
             var records = await _context.BorrowRecords
-                .Include(br => br.Book)
+                .Include(br => br.BorrowDetails) // Lấy danh sách chi tiết
+                    .ThenInclude(d => d.Book)    // Lấy thông tin sách bên trong chi tiết
                 .ToListAsync();
+
             return Ok(_mapper.Map<IEnumerable<BorrowRecordDto>>(records));
         }
 
         // 2. POST: Tạo phiếu mượn mới
         [HttpPost]
-        public async Task<ActionResult<BorrowRecordDto>> PostBorrowRecord([FromBody] BorrowRecordCreateDto createDto)
+        public async Task<IActionResult> BorrowBooks([FromBody] BorrowRecordCreateDto createDto)
         {
-            var book = await _context.Books.FindAsync(createDto.BookId);
-            if (book == null) return BadRequest("Sách không tồn tại.");
+            if (createDto.BookIds == null || !createDto.BookIds.Any())
+                return BadRequest("Phải có ít nhất 1 cuốn sách.");
 
-            var record = _mapper.Map<BorrowRecord>(createDto);
+            // Kéo toàn bộ lịch sử mượn của SĐT này ra để kiểm tra
+            var userHistory = await _context.BorrowRecords
+                .Include(r => r.BorrowDetails)
+                .Where(r => r.PhoneNumber == createDto.PhoneNumber)
+                .ToListAsync();
+
+            // =================================================================
+            // LUẬT 1: KIỂM TRA TỔNG SỐ SÁCH ĐANG GIỮ (TỐI ĐA 5 CUỐN)
+            // =================================================================
+            // Đếm những cuốn sách mà SĐT này mượn nhưng chưa trả (ReturnDate == null)
+            int currentHoldingCount = userHistory
+                .SelectMany(r => r.BorrowDetails)
+                .Count(d => d.ReturnDate == null);
+
+            int availableSlots = MaxBooks - currentHoldingCount;
+
+            // Trường hợp 1: Đã giữ đủ 5 cuốn -> Khóa luôn
+            if (availableSlots <= 0)
+            {
+                return BadRequest($"Từ chối: Bạn đang giữ {currentHoldingCount} cuốn sách (đã đạt giới hạn tối đa). Vui lòng trả bớt sách để có thể mượn thêm.");
+            }
+
+            // Trường hợp 2: Số sách muốn mượn đợt này lớn hơn số Slot còn lại
+            if (createDto.BookIds.Count > availableSlots)
+            {
+                return BadRequest($"Từ chối: Bạn hiện đang giữ {currentHoldingCount} cuốn sách. Khung quy định tối đa là {MaxBooks} cuốn, nên bạn chỉ được mượn thêm TỐI ĐA {availableSlots} cuốn nữa.");
+            }
+
+            // =================================================================
+            // LUẬT 2: CHẶN NẾU ĐANG CÓ SÁCH QUÁ HẠN CHƯA TRẢ
+            // =================================================================
+            var currentlyOverdue = userHistory.Any(r => 
+                r.DueDate < DateTime.Today && 
+                r.BorrowDetails.Any(d => d.ReturnDate == null)
+            );
             
-            if (record.BorrowDate == default) record.BorrowDate = DateTime.Now;
+            if (currentlyOverdue)
+                return BadRequest("Từ chối: Bạn đang có sách quá hạn chưa trả. Vui lòng nộp phạt trước khi mượn mới.");
+
+            // =================================================================
+            // LUẬT 3: CHẶN VĨNH VIỄN NẾU TÁI PHẠM (TRỄ HẠN TỪ 2 LẦN)
+            // =================================================================
+            var lateIncidentsCount = userHistory
+                .Where(r => r.BorrowDetails.Any(d => d.ReturnDate != null && d.ReturnDate > r.DueDate)) // Đã sửa r.BorrowRecord.DueDate thành r.DueDate
+                .Count();
+
+            if (lateIncidentsCount >= 2)
+                return BadRequest("Từ chối: Số điện thoại này đã bị khóa vĩnh viễn do tái phạm trả trễ hạn.");
+
+            // =================================================================
+            // TẠO PHIẾU MƯỢN MỚI
+            // =================================================================
+            var borrowDate = DateTime.Today;
+            var record = new BorrowRecord
+            {
+                BorrowerName = createDto.BorrowerName,
+                PhoneNumber = createDto.PhoneNumber,
+                BorrowDate = borrowDate,
+                DueDate = borrowDate.AddDays(BorrowDays)
+            };
+
+            foreach (var bookId in createDto.BookIds)
+            {
+                var book = await _context.Books.FindAsync(bookId);
+                if (book == null) return BadRequest($"Lỗi: Sách có ID {bookId} không tồn tại.");
+
+                var isAvailable = !await _context.BorrowDetails
+                    .AnyAsync(d => d.BookId == bookId && d.ReturnDate == null);
+                
+                if (!isAvailable) return BadRequest($"Lỗi: Sách '{book.Title}' hiện đang được người khác mượn.");
+
+                record.BorrowDetails.Add(new BorrowDetail
+                {
+                    BookId = bookId,
+                    FineAmount = 0
+                });
+            }
 
             _context.BorrowRecords.Add(record);
             await _context.SaveChangesAsync();
 
-            await _context.Entry(record).Reference(r => r.Book).LoadAsync();
-
-            var resultDto = _mapper.Map<BorrowRecordDto>(record);
-            return Ok(resultDto);
+            return Ok(new { 
+                message = "Mượn sách thành công!", 
+                recordId = record.Id,
+                totalBooks = record.BorrowDetails.Count,
+                dueDate = record.DueDate.ToString("yyyy-MM-dd") 
+            });
         }
 
-        // 3. PUT: Trả sách (Cập nhật ngày trả)
-        // Đường dẫn: api/borrowrecords/{id}/return
-        [HttpPut("{id}/return")]
-        public async Task<IActionResult> ReturnBook(int id)
+        // 3. PUT: Trả sách
+        [HttpPut("return")]
+        public async Task<IActionResult> ReturnBooks([FromBody] ReturnBookRequestDto request)
         {
-            var record = await _context.BorrowRecords.FindAsync(id);
-            
-            if (record == null) return NotFound("Không tìm thấy bản ghi mượn sách.");
+            // Bắt đầu truy vấn tìm các sách CHƯA TRẢ
+            var query = _context.BorrowDetails
+                .Include(d => d.BorrowRecord)
+                .Where(d => d.ReturnDate == null);
 
-            // Nếu đã có ngày trả rồi thì không cần cập nhật lại
-            if (record.ReturnDate != null) return BadRequest("Sách này đã được trả trước đó.");
+            // Kiểm tra xem người dùng truyền vào ID Phiếu mượn hay ID Sách
+            if (request.BorrowRecordId.HasValue && request.BorrowRecordId > 0)
+            {
+                // Trả theo Phiếu mượn: Lấy tất cả sách chưa trả thuộc Phiếu này
+                query = query.Where(d => d.BorrowRecordId == request.BorrowRecordId);
+            }
+            else if (request.BookIds != null && request.BookIds.Any())
+            {
+                // Trả lẻ theo Sách: Kéo những cuốn trùng BookId
+                query = query.Where(d => request.BookIds.Contains(d.BookId));
+            }
+            else
+            {
+                return BadRequest("Vui lòng cung cấp danh sách ID sách hoặc ID phiếu mượn cần trả.");
+            }
 
-            record.ReturnDate = DateTime.Now; // Ghi nhận ngày trả là hiện tại
-            
+            var details = await query.ToListAsync();
+
+            if (details.Count == 0) 
+                return NotFound("Không tìm thấy sách đang được mượn hợp lệ hoặc sách đã được trả trước đó.");
+
+            decimal totalFine = 0;
+            var returnDate = DateTime.Today;
+
+            foreach (var detail in details)
+            {
+                detail.ReturnDate = returnDate;
+
+                // Tính tiền phạt cho từng cuốn sách nếu trễ
+                if (returnDate > detail.BorrowRecord.DueDate)
+                {
+                    int daysLate = (returnDate - detail.BorrowRecord.DueDate).Days;
+                    if (daysLate > 0)
+                    {
+                        detail.FineAmount = daysLate * FinePerDay;
+                        totalFine += detail.FineAmount;
+                    }
+                }
+            }
+
             await _context.SaveChangesAsync();
-            return Ok(new { message = "Trả sách thành công!", returnDate = record.ReturnDate });
-        }
 
-        // 4. DELETE: Xóa phiếu mượn (Có ràng buộc)
+            return Ok(new { 
+                message = $"Đã trả thành công {details.Count} cuốn sách.",
+                returnDate = returnDate.ToString("yyyy-MM-dd"),
+                totalFineAmount = totalFine,
+                note = totalFine > 0 ? $"Bạn đã trễ hạn, tổng tiền phạt là {totalFine:N0} VNĐ" : "Trả đúng hạn, cảm ơn bạn!"
+            });
+        }
+        // 4. DELETE: Xóa phiếu mượn (Chỉ cho phép xóa khi ĐÃ TRẢ HẾT SÁCH)
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteRecord(int id)
         {
-            var record = await _context.BorrowRecords.FindAsync(id);
-            if (record == null) return NotFound();
+            // Lấy phiếu mượn kèm theo danh sách chi tiết mượn bên trong
+            var record = await _context.BorrowRecords
+                .Include(r => r.BorrowDetails)
+                .FirstOrDefaultAsync(r => r.Id == id);
 
-            // RÀNG BUỘC: Nếu sách chưa có ngày trả (ReturnDate là null), không cho xóa 
-            if (record.ReturnDate == null)
+            if (record == null) 
+                return NotFound("Không tìm thấy phiếu mượn.");
+
+            // RÀNG BUỘC: Kiểm tra xem có cuốn sách nào trong phiếu này chưa trả không
+            bool hasUnreturnedBooks = record.BorrowDetails.Any(d => d.ReturnDate == null);
+            
+            if (hasUnreturnedBooks)
             {
-                return BadRequest("Không thể xóa bản ghi vì sách chưa được trả. Vui lòng thực hiện trả sách trước.");
+                return BadRequest("Từ chối: Không thể xóa phiếu mượn này vì vẫn còn sách chưa được trả. Vui lòng trả toàn bộ sách trước khi xóa.");
             }
 
+            // Xóa phiếu mượn (EF Core sẽ tự động xóa các BorrowDetail con nhờ Cascade Delete)
             _context.BorrowRecords.Remove(record);
             await _context.SaveChangesAsync();
-            return NoContent();
+            
+            return Ok(new { message = "Đã xóa phiếu mượn thành công!" });
         }
     }
 }

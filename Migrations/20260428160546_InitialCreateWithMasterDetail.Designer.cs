@@ -4,6 +4,7 @@ using Library.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Library.API.Migrations
 {
     [DbContext(typeof(LibraryDbContext))]
-    partial class LibraryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260428160546_InitialCreateWithMasterDetail")]
+    partial class InitialCreateWithMasterDetail
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -70,39 +73,7 @@ namespace Library.API.Migrations
 
                     b.HasIndex("CategoryId");
 
-                    b.HasIndex("Title")
-                        .IsUnique();
-
                     b.ToTable("Books");
-                });
-
-            modelBuilder.Entity("Library.API.Entities.BorrowDetail", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("BookId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("BorrowRecordId")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("FineAmount")
-                        .HasColumnType("decimal(18, 0)");
-
-                    b.Property<DateTime?>("ReturnDate")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BookId");
-
-                    b.HasIndex("BorrowRecordId");
-
-                    b.ToTable("BorrowDetails");
                 });
 
             modelBuilder.Entity("Library.API.Entities.BorrowRecord", b =>
@@ -127,12 +98,20 @@ namespace Library.API.Migrations
                     b.Property<DateTime>("DueDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<decimal>("FineAmount")
+                        .HasColumnType("decimal(18, 0)");
+
                     b.Property<string>("PhoneNumber")
                         .IsRequired()
                         .HasMaxLength(15)
                         .HasColumnType("nvarchar(15)");
 
+                    b.Property<DateTime?>("ReturnDate")
+                        .HasColumnType("datetime2");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("BookId");
 
                     b.ToTable("BorrowRecords");
                 });
@@ -174,7 +153,7 @@ namespace Library.API.Migrations
                     b.Navigation("Category");
                 });
 
-            modelBuilder.Entity("Library.API.Entities.BorrowDetail", b =>
+            modelBuilder.Entity("Library.API.Entities.BorrowRecord", b =>
                 {
                     b.HasOne("Library.API.Entities.Book", "Book")
                         .WithMany()
@@ -182,25 +161,12 @@ namespace Library.API.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Library.API.Entities.BorrowRecord", "BorrowRecord")
-                        .WithMany("BorrowDetails")
-                        .HasForeignKey("BorrowRecordId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.Navigation("Book");
-
-                    b.Navigation("BorrowRecord");
                 });
 
             modelBuilder.Entity("Library.API.Entities.Author", b =>
                 {
                     b.Navigation("Books");
-                });
-
-            modelBuilder.Entity("Library.API.Entities.BorrowRecord", b =>
-                {
-                    b.Navigation("BorrowDetails");
                 });
 
             modelBuilder.Entity("Library.API.Entities.Category", b =>

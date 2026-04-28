@@ -5,19 +5,18 @@ namespace Library.API.Data
 {
     public class LibraryDbContext : DbContext
     {
-        public LibraryDbContext(DbContextOptions<LibraryDbContext> options) : base(options)
-        {
-        }
+        public LibraryDbContext(DbContextOptions<LibraryDbContext> options) : base(options) { }
 
-        // Khai báo các bảng dữ liệu tương ứng với các Entity
         public DbSet<Book> Books { get; set; }
         public DbSet<Author> Authors { get; set; }
         public DbSet<Category> Categories { get; set; }
         public DbSet<BorrowRecord> BorrowRecords { get; set; }
-
+        public DbSet<BorrowDetail> BorrowDetails { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<Book>()
+                .HasIndex(b => b.Title)
+                .IsUnique();
         }
     }
 }

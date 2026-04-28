@@ -2,8 +2,8 @@ namespace Library.API.Dtos.BorrowRecords.Requests
 {
     public class BorrowRecordCreateDto
     {
-        public int BookId { get; set; }
+        public List<int> BookIds { get; set; } = new List<int>(); // Nhận danh sách ID sách
         public string BorrowerName { get; set; } = string.Empty;
-        //public DateTime BorrowDate { get; set; } = DateTime.Now;
+        public string PhoneNumber { get; set; } = string.Empty;
     }
 }
