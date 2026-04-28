@@ -5,9 +5,11 @@ using Library.API.Entities;
 using AutoMapper;
 using Library.API.Dtos.Books.Requests;
 using Library.API.Dtos.Books.Responses;
+using Microsoft.AspNetCore.Authorization;
 
 namespace Library.API.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     public class BooksController : ControllerBase

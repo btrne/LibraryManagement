@@ -5,9 +5,11 @@ using Library.API.Entities;
 using AutoMapper;
 using Library.API.Dtos.Authors.Requests;
 using Library.API.Dtos.Authors.Responses;
+using Microsoft.AspNetCore.Authorization;
 
 namespace Library.API.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     public class AuthorsController : ControllerBase
