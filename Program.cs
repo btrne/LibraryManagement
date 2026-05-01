@@ -1,17 +1,24 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Library.API.Data;
-using Scalar.AspNetCore; // Hỗ trợ giao diện API mới
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
-using System.Text;
 using Microsoft.OpenApi.Models;
+using System.Text;
+using Library.API.Data;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. ĐĂNG KÝ CÁC DỊCH VỤ (SERVICES)
-builder.Services.AddControllers(); // Bắt buộc để nhận diện BooksController
-// ĐĂNG KÝ BẢO MẬT JWT
+// 1. ĐĂNG KÝ CÁC DỊCH VỤ (DEPENDENCY INJECTION)
+
+// 1.1. Core Services
+builder.Services.AddControllers();
+builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
+
+// 1.2. Database Context
+builder.Services.AddDbContext<LibraryDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// 1.3. Authentication & Authorization (JWT)
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -28,12 +35,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
-builder.Services.AddDbContext<LibraryDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-builder.Services.AddOpenApi(); // Tạo dữ liệu OpenAPI cho .NET 10
-
-// ĐĂNG KÝ GIAO DIỆN NHẬP TOKEN CHO OPENAPI/SCALAR
+// 1.4. OpenAPI & Giao diện Scalar (Kèm cấu hình nhập Token)
 builder.Services.AddOpenApi(options =>
 {
     options.AddDocumentTransformer((document, context, cancellationToken) =>
@@ -69,17 +71,18 @@ builder.Services.AddOpenApi(options =>
     });
 });
 
-builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
+// 2. XÂY DỰNG ỨNG DỤNG VÀ CHẠY MIGRATION
+
 var app = builder.Build();
 
-// 2. TỰ ĐỘNG TẠO/CẬP NHẬT DATABASE KHI KHỞI CHẠY
+// Tự động tạo/cập nhật Database
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     try
     {
         var context = services.GetRequiredService<LibraryDbContext>();
-        context.Database.Migrate(); 
+        await context.Database.MigrateAsync(); 
         Console.WriteLine("--- Database has been updated successfully! ---");
     }
     catch (Exception ex)
@@ -89,16 +92,18 @@ using (var scope = app.Services.CreateScope())
 }
 
 // 3. CẤU HÌNH PIPELINE XỬ LÝ YÊU CẦU (MIDDLEWARE)
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
-    app.MapScalarApiReference(); // Mở giao diện tại /scalar/v1 
+    app.MapScalarApiReference(); // Mở giao diện API tại /scalar/v1 
 }
 
 app.UseHttpsRedirection();
 
 app.UseAuthentication(); 
 app.UseAuthorization();
-// Ánh xạ các Controller để các đường dẫn như /api/books hoạt động
+
 app.MapControllers(); 
+
 app.Run();

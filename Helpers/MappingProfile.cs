@@ -1,5 +1,6 @@
 using AutoMapper;
 using Library.API.Entities;
+using Library.API.Helpers;
 using Library.API.Dtos.Authors.Requests;
 using Library.API.Dtos.Authors.Responses;
 using Library.API.Dtos.Books.Requests;
@@ -15,22 +16,33 @@ namespace Library.API.Helpers
     {
         public MappingProfile()
         {
-            CreateMap<Author, AuthorDto>();
+            // 1. Map Tác giả
+            CreateMap<Author, AuthorDto>()
+                .ForMember(dest => dest.BookCount, opt => opt.MapFrom(src => src.Books.Count));
             CreateMap<AuthorCreateDto, Author>();
 
-            CreateMap<Category, CategoryDto>();
+            // 2. Map Thể loại
+            CreateMap<Category, CategoryDto>()
+                .ForMember(dest => dest.BookCount, opt => opt.MapFrom(src => src.Books.Count));
             CreateMap<CategoryCreateDto, Category>();
 
+            // 3. Map cho Đầu sách (Book) -> BookDto
             CreateMap<Book, BookDto>()
                 .ForMember(dest => dest.AuthorName, opt => opt.MapFrom(src => src.Author.Name))
                 .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.Name));
             CreateMap<BookCreateDto, Book>();
 
-            // Map cho BorrowDetail (Lấy Title từ bảng Book)
+            // 4. Map cho Bản sao (BookCopy) -> BookCopyDto
+            CreateMap<BookCopy, BookCopyDto>()
+                .ForMember(dest => dest.Status, 
+                           opt => opt.MapFrom(src => src.Status.ToFriendlyString()));
+
+            // 5. Map cho Chi tiết mượn (BorrowDetail)
             CreateMap<BorrowDetail, BorrowDetailDto>()
-                .ForMember(dest => dest.BookTitle, opt => opt.MapFrom(src => src.Book.Title));
-                
-            // Map cho BorrowRecord
+                .ForMember(dest => dest.BookId, opt => opt.MapFrom(src => src.BookCopy.BookId)) 
+                .ForMember(dest => dest.BookTitle, opt => opt.MapFrom(src => src.BookCopy.Book.Title));
+
+            // 6. Map cho Phiếu mượn
             CreateMap<BorrowRecord, BorrowRecordDto>();
         }
     }

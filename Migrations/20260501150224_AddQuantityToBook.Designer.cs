@@ -4,6 +4,7 @@ using Library.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Library.API.Migrations
 {
     [DbContext(typeof(LibraryDbContext))]
-    partial class LibraryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260501150224_AddQuantityToBook")]
+    partial class AddQuantityToBook
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -59,6 +62,9 @@ namespace Library.API.Migrations
                         .HasMaxLength(13)
                         .HasColumnType("nvarchar(13)");
 
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -76,35 +82,6 @@ namespace Library.API.Migrations
                     b.ToTable("Books");
                 });
 
-            modelBuilder.Entity("Library.API.Entities.BookCopy", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Barcode")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<int>("BookId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Barcode")
-                        .IsUnique();
-
-                    b.HasIndex("BookId");
-
-                    b.ToTable("BookCopies");
-                });
-
             modelBuilder.Entity("Library.API.Entities.BorrowDetail", b =>
                 {
                     b.Property<int>("Id")
@@ -113,7 +90,7 @@ namespace Library.API.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("BookCopyId")
+                    b.Property<int>("BookId")
                         .HasColumnType("int");
 
                     b.Property<int>("BorrowRecordId")
@@ -127,7 +104,7 @@ namespace Library.API.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BookCopyId");
+                    b.HasIndex("BookId");
 
                     b.HasIndex("BorrowRecordId");
 
@@ -203,22 +180,11 @@ namespace Library.API.Migrations
                     b.Navigation("Category");
                 });
 
-            modelBuilder.Entity("Library.API.Entities.BookCopy", b =>
-                {
-                    b.HasOne("Library.API.Entities.Book", "Book")
-                        .WithMany("Copies")
-                        .HasForeignKey("BookId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Book");
-                });
-
             modelBuilder.Entity("Library.API.Entities.BorrowDetail", b =>
                 {
-                    b.HasOne("Library.API.Entities.BookCopy", "BookCopy")
-                        .WithMany("BorrowDetails")
-                        .HasForeignKey("BookCopyId")
+                    b.HasOne("Library.API.Entities.Book", "Book")
+                        .WithMany()
+                        .HasForeignKey("BookId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -228,7 +194,7 @@ namespace Library.API.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("BookCopy");
+                    b.Navigation("Book");
 
                     b.Navigation("BorrowRecord");
                 });
@@ -236,16 +202,6 @@ namespace Library.API.Migrations
             modelBuilder.Entity("Library.API.Entities.Author", b =>
                 {
                     b.Navigation("Books");
-                });
-
-            modelBuilder.Entity("Library.API.Entities.Book", b =>
-                {
-                    b.Navigation("Copies");
-                });
-
-            modelBuilder.Entity("Library.API.Entities.BookCopy", b =>
-                {
-                    b.Navigation("BorrowDetails");
                 });
 
             modelBuilder.Entity("Library.API.Entities.BorrowRecord", b =>

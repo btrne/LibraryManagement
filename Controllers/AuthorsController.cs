@@ -6,6 +6,8 @@ using AutoMapper;
 using Library.API.Dtos.Authors.Requests;
 using Library.API.Dtos.Authors.Responses;
 using Microsoft.AspNetCore.Authorization;
+using ClosedXML.Excel;
+using Microsoft.AspNetCore.Http;
 
 namespace Library.API.Controllers
 {
@@ -26,8 +28,7 @@ namespace Library.API.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<AuthorDto>>> GetAuthors([FromQuery] AuthorSearchDto searchDto)
         {
-            // AsQueryable() giúp chúng ta "lắp ráp" câu query trước khi thực sự chạy xuống Database
-            var query = _context.Authors.AsQueryable();
+            var query = _context.Authors.Include(a => a.Books).AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(searchDto.Keyword))
             {
@@ -38,7 +39,7 @@ namespace Library.API.Controllers
             var authors = await query.ToListAsync(); // Chạy câu SQL xuống DB
             return Ok(_mapper.Map<IEnumerable<AuthorDto>>(authors));
         }
-        // 2. GET: api/authors/5
+        // 2. GET: api/author
         [HttpGet("{id}")]
         public async Task<ActionResult<AuthorDto>> GetAuthor(int id)
         {
@@ -65,7 +66,7 @@ namespace Library.API.Controllers
 
             return CreatedAtAction(nameof(GetAuthor), new { id = author.Id }, resultDto);
         }
-        // 4. PUT: api/authors/5
+        // 4. PUT: api/author
         [HttpPut("{id}")]
         public async Task<IActionResult> PutAuthor(int id, AuthorCreateDto authorUpdateDto)
         {
@@ -85,7 +86,7 @@ namespace Library.API.Controllers
             }
             return NoContent();
         }
-        // 5. DELETE: api/authors/5
+        // 5. DELETE: api/author
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteAuthor(int id)
         {
@@ -99,6 +100,67 @@ namespace Library.API.Controllers
             await _context.SaveChangesAsync();
 
             return NoContent();
+        }
+        // 6. POST: api/authors/import
+        [HttpPost("import")]
+        public async Task<IActionResult> ImportFromExcel(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("Vui lòng tải lên một file.");
+
+            if (!file.FileName.EndsWith(".xlsx"))
+                return BadRequest("Hệ thống chỉ hỗ trợ định dạng file Excel (.xlsx).");
+
+            int addedCount = 0;
+            var errors = new List<string>();
+
+            using var stream = new MemoryStream();
+            await file.CopyToAsync(stream);
+            
+            using var workbook = new XLWorkbook(stream);
+            var worksheet = workbook.Worksheet(1);
+            var rows = worksheet.RangeUsed().RowsUsed().Skip(1); 
+
+            foreach (var row in rows)
+            {
+                var rowNum = row.RowNumber();
+                try
+                {
+                    string name = row.Cell(1).GetValue<string>()?.Trim() ?? string.Empty;
+
+                    if (string.IsNullOrEmpty(name))
+                    {
+                        errors.Add($"Dòng {rowNum}: Tên tác giả bị trống.");
+                        continue;
+                    }
+
+                    // Kiểm tra xem tác giả đã tồn tại chưa
+                    bool exists = _context.Authors.Local.Any(a => a.Name.ToLower() == name.ToLower()) ||
+                                  await _context.Authors.AnyAsync(a => a.Name.ToLower() == name.ToLower());
+
+                    if (exists)
+                    {
+                        errors.Add($"Dòng {rowNum}: Tác giả '{name}' đã tồn tại.");
+                        continue;
+                    }
+
+                    _context.Authors.Add(new Author { Name = name });
+                    addedCount++;
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Dòng {rowNum}: Lỗi xử lý ({ex.Message})");
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                Message = "Xử lý file Excel hoàn tất.",
+                NewAuthorsCreated = addedCount,
+                Errors = errors
+            });
         }
     }
 }

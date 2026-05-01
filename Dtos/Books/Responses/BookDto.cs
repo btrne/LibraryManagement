@@ -4,7 +4,9 @@ namespace Library.API.Dtos.Books.Responses
     {
         public int Id { get; set; }
         public string Title { get; set; } = string.Empty;
-        public string? AuthorName { get; set; } // Lấy tên thay vì ID
+        public string? AuthorName { get; set; }
         public string? CategoryName { get; set; }
+        
+        public List<BookCopyDto> Copies { get; set; } = new List<BookCopyDto>();
     }
 }

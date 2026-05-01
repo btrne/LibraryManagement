@@ -16,7 +16,7 @@ namespace Library.API.Entities
         [MaxLength(13)]
         public string Isbn { get; set; } = string.Empty;
 
-        // Khóa ngoại (Foreign Keys)
+        //Foreign Keys
         public int AuthorId { get; set; }
         public int CategoryId { get; set; }
 
@@ -26,5 +26,7 @@ namespace Library.API.Entities
 
         [ForeignKey("CategoryId")]
         public Category Category { get; set; } = null!;
+
+        public ICollection<BookCopy> Copies { get; set; } = new List<BookCopy>();
     }
 }
