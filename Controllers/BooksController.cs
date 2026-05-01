@@ -8,6 +8,7 @@ using Library.API.Dtos.Books.Responses;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http; // Để dùng IFormFile
 using ClosedXML.Excel;
+using Library.API.Dtos.Common;
 
 namespace Library.API.Controllers
 {
@@ -18,16 +19,18 @@ namespace Library.API.Controllers
     {
         private readonly LibraryDbContext _context;
         private readonly IMapper _mapper;
+        private readonly IWebHostEnvironment _environment = default!;
 
-        public BooksController(LibraryDbContext context, IMapper mapper)
+        public BooksController(LibraryDbContext context, IMapper mapper, IWebHostEnvironment environment)
         {
             _context = context;
             _mapper = mapper;
+            _environment = environment;
         }
 
         // 1. GET: api/books
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<BookDto>>> GetBooks([FromQuery] BookSearchDto searchDto)
+        public async Task<ActionResult<PagedResult<BookDto>>> GetBooks([FromQuery] BookSearchDto searchDto)
         {
             var query = _context.Books
                 .Include(b => b.Author)
@@ -47,8 +50,51 @@ namespace Library.API.Controllers
             if (searchDto.CategoryId.HasValue)
                 query = query.Where(b => b.CategoryId == searchDto.CategoryId.Value);
 
-            var books = await query.ToListAsync();
-            return Ok(_mapper.Map<IEnumerable<BookDto>>(books));
+            //Sắp xếp và phân trang
+            if (!string.IsNullOrWhiteSpace(searchDto.SortBy))
+            {
+                if (searchDto.SortBy.Equals("Title", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = searchDto.IsDescending ? query.OrderByDescending(b => b.Title) : query.OrderBy(b => b.Title);
+                }
+                else if (searchDto.SortBy.Equals("Id", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = searchDto.IsDescending ? query.OrderByDescending(b => b.Id) : query.OrderBy(b => b.Id);
+                }
+                else if (searchDto.SortBy.Equals("AuthorName", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = searchDto.IsDescending ? query.OrderByDescending(b => b.Author.Name) : query.OrderBy(b => b.Author.Name);
+                }
+                else if (searchDto.SortBy.Equals("CategoryName", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = searchDto.IsDescending ? query.OrderByDescending(b => b.Category.Name) : query.OrderBy(b => b.Category.Name);
+                }
+                
+            }
+            else
+            {
+                query = query.OrderBy(b => b.Id);
+            }
+
+            var totalItems = await query.CountAsync();
+            var skipNumber = (searchDto.PageNumber - 1) * searchDto.PageSize;
+            var books = await query
+                .Skip(skipNumber)
+                .Take(searchDto.PageSize)
+                .ToListAsync();
+            
+            var totalPages = (int)Math.Ceiling((double)totalItems / searchDto.PageSize);
+    
+            var result = new PagedResult<BookDto>
+            {
+                Items = _mapper.Map<IEnumerable<BookDto>>(books),
+                TotalItems = totalItems,
+                TotalPages = totalPages,
+                CurrentPage = searchDto.PageNumber,
+                PageSize = searchDto.PageSize
+            };
+
+            return Ok(result);
         }
         // 2. GET: api/book
         [HttpGet("{id}")]
@@ -281,6 +327,37 @@ namespace Library.API.Controllers
                 NewCopiesCreated = addedCopiesCount,
                 Errors = errors
             });
+        }
+        
+        // 7. POST: api/books/{id}/upload-image
+        [HttpPost("{id}/upload-image")]
+        public async Task<IActionResult> UploadImage(int id, IFormFile file)
+        {
+            // 1. Kiểm tra file hợp lệ
+            if (file == null || file.Length == 0) return BadRequest("Vui lòng chọn một file ảnh.");
+            
+            var book = await _context.Books.FindAsync(id);
+            if (book == null) return NotFound("Không tìm thấy sách.");
+
+            // 2. Tạo thư mục lưu trữ nếu chưa có (wwwroot/uploads)
+            var uploadsFolder = Path.Combine(_environment.WebRootPath, "uploads");
+            if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
+
+            // 3. Tạo tên file duy nhất để không bị trùng
+            var fileName = Guid.NewGuid().ToString() + Path.GetExtension(file.FileName);
+            var filePath = Path.Combine(uploadsFolder, fileName);
+
+            // 4. Lưu file vật lý vào thư mục
+            using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await file.CopyToAsync(stream);
+            }
+
+            // 5. Lưu đường dẫn vào Database
+            book.ImageUrl = $"/uploads/{fileName}";
+            await _context.SaveChangesAsync();
+
+            return Ok(new { imageUrl = book.ImageUrl });
         }
     }
 }

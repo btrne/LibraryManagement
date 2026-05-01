@@ -16,6 +16,8 @@ namespace Library.API.Entities
         [MaxLength(13)]
         public string Isbn { get; set; } = string.Empty;
 
+        public string? ImageUrl { get; set; }
+
         //Foreign Keys
         public int AuthorId { get; set; }
         public int CategoryId { get; set; }
