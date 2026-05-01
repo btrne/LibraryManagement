@@ -7,6 +7,7 @@ using Library.API.Helpers;
 using Library.API.Dtos.BorrowRecords.Requests;
 using Library.API.Dtos.BorrowRecords.Responses;
 using Microsoft.AspNetCore.Authorization;
+using Library.API.Dtos.Common;
 
 namespace Library.API.Controllers
 {
@@ -28,9 +29,9 @@ namespace Library.API.Controllers
             _mapper = mapper;
         }
 
-        // 1. GET: Lấy tất cả phiếu mượn (Có hỗ trợ lọc)
+        // 1. GET: Lấy tất cả phiếu mượn
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<BorrowRecordDto>>> GetBorrowRecords([FromQuery] BorrowRecordSearchDto searchDto)
+        public async Task<ActionResult<PagedResult<BorrowRecordDto>>> GetBorrowRecords([FromQuery] BorrowRecordSearchDto searchDto)
         {
             var query = _context.BorrowRecords
                 .Include(br => br.BorrowDetails) 
@@ -38,6 +39,7 @@ namespace Library.API.Controllers
                         .ThenInclude(c => c.Book)
                 .AsQueryable();
 
+            // 1. Lọc dữ liệu
             if (!string.IsNullOrWhiteSpace(searchDto.PhoneNumber))
                 query = query.Where(br => br.PhoneNumber.Contains(searchDto.PhoneNumber));
 
@@ -54,8 +56,48 @@ namespace Library.API.Controllers
                     br.BorrowDetails.Any(d => d.ReturnDate == null));
             }
 
-            var records = await query.OrderByDescending(r => r.BorrowDate).ToListAsync();
-            return Ok(_mapper.Map<IEnumerable<BorrowRecordDto>>(records));
+            // 2. Tính tổng số lượng bản ghi thỏa mãn điều kiện lọc
+            var totalItems = await query.CountAsync();
+
+            /// 3. Sắp xếp động
+            if (!string.IsNullOrWhiteSpace(searchDto.SortBy))
+            {
+                if (searchDto.SortBy.Equals("DueDate", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = searchDto.IsDescending ? query.OrderByDescending(r => r.DueDate) : query.OrderBy(r => r.DueDate);
+                }
+                else if (searchDto.SortBy.Equals("BorrowerName", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = searchDto.IsDescending ? query.OrderByDescending(r => r.BorrowerName) : query.OrderBy(r => r.BorrowerName);
+                }
+                else
+                {
+                    query = searchDto.IsDescending ? query.OrderByDescending(r => r.BorrowDate) : query.OrderBy(r => r.BorrowDate);
+                }
+            }
+            else
+            {
+                query = query.OrderByDescending(r => r.BorrowDate);
+            }
+
+            // 4. Thực hiện phân trang
+            var skipNumber = (searchDto.PageNumber - 1) * searchDto.PageSize;
+            var records = await query
+                .Skip(skipNumber)
+                .Take(searchDto.PageSize)
+                .ToListAsync();
+
+            // 5. Đóng gói vào đối tượng PagedResult
+            var result = new PagedResult<BorrowRecordDto>
+            {
+                Items = _mapper.Map<IEnumerable<BorrowRecordDto>>(records),
+                TotalItems = totalItems,
+                TotalPages = (int)Math.Ceiling((double)totalItems / searchDto.PageSize),
+                CurrentPage = searchDto.PageNumber,
+                PageSize = searchDto.PageSize
+            };
+
+            return Ok(result);
         }
 
         // 2. POST: Tạo phiếu mượn mới
