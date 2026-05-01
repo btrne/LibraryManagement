@@ -8,6 +8,7 @@ using Library.API.Dtos.Categories.Responses;
 using Microsoft.AspNetCore.Authorization;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Http;
+using Library.API.Dtos.Common;
 
 namespace Library.API.Controllers
 {
@@ -29,15 +30,31 @@ namespace Library.API.Controllers
         public async Task<ActionResult<IEnumerable<CategoryDto>>> GetCategories([FromQuery] CategorySearchDto searchDto)
         {
             var query = _context.Categories.Include(c => c.Books).AsQueryable();
-
-            // Nếu người dùng có nhập từ khóa, tiến hành lọc theo tên Thể loại
+            // 1. Lọc theo từ khóa
             if (!string.IsNullOrWhiteSpace(searchDto.Keyword))
             {
                 query = query.Where(c => c.Name.Contains(searchDto.Keyword));
             }
 
-            var categories = await query.ToListAsync();
-            return Ok(_mapper.Map<IEnumerable<CategoryDto>>(categories));
+            var totalItems = await query.CountAsync();
+
+            // 2. Phân trang
+            var categories = await query
+                .OrderBy(c => c.Name)
+                .Skip((searchDto.PageNumber - 1) * searchDto.PageSize)
+                .Take(searchDto.PageSize)
+                .ToListAsync();
+
+            var result = new PagedResult<CategoryDto>
+            {
+                Items = _mapper.Map<IEnumerable<CategoryDto>>(categories),
+                TotalItems = totalItems,
+                TotalPages = (int)Math.Ceiling((double)totalItems / searchDto.PageSize),
+                CurrentPage = searchDto.PageNumber,
+                PageSize = searchDto.PageSize
+            };
+
+            return Ok(result);
         }
 
         [HttpGet("{id}")]

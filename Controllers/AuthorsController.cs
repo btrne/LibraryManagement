@@ -8,6 +8,7 @@ using Library.API.Dtos.Authors.Responses;
 using Microsoft.AspNetCore.Authorization;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Http;
+using Library.API.Dtos.Common;
 
 namespace Library.API.Controllers
 {
@@ -26,18 +27,36 @@ namespace Library.API.Controllers
         }
         // 1. GET: api/authors
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<AuthorDto>>> GetAuthors([FromQuery] AuthorSearchDto searchDto)
+        public async Task<ActionResult<PagedResult<AuthorDto>>> GetAuthors([FromQuery] AuthorSearchDto searchDto)
         {
             var query = _context.Authors.Include(a => a.Books).AsQueryable();
 
+            // 1. Lọc theo từ khóa
             if (!string.IsNullOrWhiteSpace(searchDto.Keyword))
             {
-                // LIKE '%keyword%' trong SQL
                 query = query.Where(a => a.Name.Contains(searchDto.Keyword));
             }
 
-            var authors = await query.ToListAsync(); // Chạy câu SQL xuống DB
-            return Ok(_mapper.Map<IEnumerable<AuthorDto>>(authors));
+            // 2. Phân trang
+            var totalItems = await query.CountAsync();
+            var skipNumber = (searchDto.PageNumber - 1) * searchDto.PageSize;
+            var authors = await query
+                .OrderBy(a => a.Name)
+                .Skip(skipNumber)
+                .Take(searchDto.PageSize)
+                .ToListAsync();
+
+            // 5. Đóng gói kết quả vào PagedResult
+            var result = new PagedResult<AuthorDto>
+            {
+                Items = _mapper.Map<IEnumerable<AuthorDto>>(authors),
+                TotalItems = totalItems,
+                TotalPages = (int)Math.Ceiling((double)totalItems / searchDto.PageSize),
+                CurrentPage = searchDto.PageNumber,
+                PageSize = searchDto.PageSize
+            };
+
+            return Ok(result);
         }
         // 2. GET: api/author
         [HttpGet("{id}")]
